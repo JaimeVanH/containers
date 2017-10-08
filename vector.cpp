@@ -10,9 +10,9 @@ int main(int argc, char **argv)
 	{
 		*iter = (int) (__intptr_t) iter;
 	}
-	for (auto iter : &vec)
+	for  (auto iter = begin(&vec); iter < end(&vec); ++iter)
 	{
-		printf("%d\n", iter);
+		printf("%d\n", *iter);
 	}
 	close(&vec);
 }

@@ -13,6 +13,8 @@ int main(int argc, char **argv)
 	HashMapLP<int, int> map;
 	init(&map);
 	print(&map);
+	put(&map, 12, 30);
+	print(&map);
 	reserve(&map, 10);
 	print(&map);
 	put(&map, 7, 34);
@@ -24,6 +26,8 @@ int main(int argc, char **argv)
 	remove(&map, 72);
 	print(&map);
 	reserve(&map, 20);
+	print(&map);
+	put(&map, 4, 10);
 	print(&map);
 
 }
