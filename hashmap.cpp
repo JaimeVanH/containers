@@ -5,32 +5,25 @@
 template <>
 size_t hash<int>(int val)
 {
-	return 0;
+	return val;
 }
 
 int main(int argc, char **argv)
 {
-	HashMap<int, int> map;
-	if (init(&map, 10))
-		abort();
-	
-	for (int i = 0;; ++i)
-	{
-		if (put(&map, i, 10 - i))
-			break;
-		printf("put [%d, %d] to map \n", i, 10 - i);
-	}
-	printf("map exhausted \n");
-	
-	printf("removing [5, 5] from map\n");
-	remove(&map, 5);
-	if (get(&map, 5))
-		abort();
-	printf("successfully removed!\n");
-	
-	if (put(&map, 100, 25))
-		abort();
-	printf("put [100, 25] in map\n");
-	
-	close(&map);
+	HashMapLP<int, int> map;
+	init(&map);
+	print(&map);
+	reserve(&map, 10);
+	print(&map);
+	put(&map, 7, 34);
+	put(&map, 72, 3);
+	put(&map, 44, 89);
+	print(&map);
+	put(&map, 72, 12);
+	print(&map);
+	remove(&map, 72);
+	print(&map);
+	reserve(&map, 20);
+	print(&map);
+
 }

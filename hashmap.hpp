@@ -1,5 +1,5 @@
 #include <cstddef>
-#include <optional>
+#include <cstdio>
 
 #include "vector.hpp"
 
@@ -7,102 +7,161 @@ template <typename T>
 size_t hash(T);
 
 template <typename K, typename V>
-struct HashMap
+struct HashMapLP
 {
-	struct KVPair
+	struct Bucket
 	{
+		bool empty;
 		K key;
 		V value;
 	};
-	Vector<std::optional<KVPair>> _table;
-	
+	Vector<Bucket> _table;
+	struct Iterator
+	{
+		// iterator will only ever point to a non-empty bucket
+		Bucket *_bucket, *_bucket_end;
+		Iterator operator++()
+		{
+			for (Bucket *next_bucket = (_bucket + 1); 
+			     next_bucket < _bucket_end; 
+			     ++next_bucket                       )
+			{
+				if (!next_bucket->empty)
+					return {next_bucket, _bucket_end};
+			}
+			return {_bucket_end, _bucket_end};
+		}
+		Bucket& operator*() { return *_bucket; };
+		bool operator!=(Iterator const &other) const { return _bucket != other._bucket; };
+	};
 };
 
 template <typename K, typename V>
-bool init(HashMap<K, V> *self, size_t size)
+void init(HashMapLP<K, V> *self)
 {
-	using KVPair = typename HashMap<K, V>::KVPair;
 	init(&self->_table);
-	if (resize(&self->_table, size))
-		return true;
-	for (auto &cell : &self->_table)
-		cell = std::nullopt;
-	return false;
 }
 
 template <typename K, typename V>
-void close(HashMap<K, V> *self)
+void close(HashMapLP<K, V> *self)
 {
 	close(&self->_table);
 }
 
 template <typename K, typename V>
-bool put(HashMap<K, V> *self, K key, V value)
+typename HashMapLP<K, V>::Iterator begin(HashMapLP<K, V> *self)
 {
-	using KVPair = typename HashMap<K, V>::KVPair;
-	size_t key_hash = hash(key) % size(&self->_table);
-	size_t cell_try = key_hash;
-	bool tried = false;
-	while (key_hash != cell_try || !tried)
+	using Bucket = typename HashMapLP<K, V>::Bucket;
+	Bucket *bucket_end = &self->_table._data[self->_table._size];
+	for (auto &bucket : &self->_table)
 	{
-		std::optional<KVPair> *cell = get(&self->_table, cell_try);
-		if (!*cell || (**cell).key == key)
+		if (!bucket.empty)
 		{
-			*cell = KVPair{key, value};
-			return false;
+			return {&bucket, bucket_end};
 		}
-		cell_try = (cell_try + 1) % size(&self->_table);
-		tried = true;
 	}
-	return true;
+	return {bucket_end, bucket_end};
 }
 
 template <typename K, typename V>
-V* get(HashMap<K, V> *self, K key)
+typename HashMapLP<K, V>::Iterator end(HashMapLP<K, V> *self)
 {
-	using KVPair = typename HashMap<K, V>::KVPair;
-	size_t key_hash = hash(key) % size(&self->_table);
-	size_t cell_try = key_hash;
-	bool tried = false;
-	while (key_hash != cell_try || !tried)
+	typename HashMapLP<K, V>::Bucket *bucket_end = &self->_table._data[self->_table._size];
+	return {bucket_end, bucket_end};
+}
+
+template <typename K, typename V>
+bool reserve(HashMapLP<K, V> *self, size_t capacity)
+{
+	if (self->_table._size < capacity)
 	{
-		std::optional<KVPair> *cell = get(&self->_table, cell_try);
-		if (!*cell)
+		HashMapLP<K, V> new_map;
+		init(&new_map);
+		if (resize(&new_map._table, capacity))
+			return true;
+		for (auto &bucket : &new_map._table)
 		{
-			return nullptr;
+			bucket.empty = true;
 		}
-		if ((**cell).key == key)
+		for (auto &bucket : self)
 		{
-			return &(**cell).value;
+			*_probe(&new_map, bucket.key) = bucket; 
 		}
-		cell_try = (cell_try + 1) % size(&self->_table);
-		tried = true;
+		close(self);
+		*self = new_map;
+	}
+	return false;	
+}
+
+template <typename K, typename V>
+typename HashMapLP<K, V>::Bucket* _probe(HashMapLP<K, V> *self, K key)
+{
+	using Bucket = typename HashMapLP<K, V>::Bucket;
+	size_t key_hash = hash(key) % self->_table._size;
+	size_t tried_bucket_offset = key_hash;
+	bool tried_first_bucket = false;
+	while (key_hash != tried_bucket_offset || !tried_first_bucket)
+	{	
+		Bucket *tried_bucket = get(&self->_table, tried_bucket_offset);
+		if (tried_bucket->empty || tried_bucket->key == key)
+		{
+			return tried_bucket;
+		}
+		tried_bucket_offset = (tried_bucket_offset + 1) % self->_table._size;
+		tried_first_bucket = true;
 	}
 	return nullptr;
 }
 
+
 template <typename K, typename V>
-bool remove(HashMap<K, V> *self, K key)
+bool put(HashMapLP<K, V> *self, K key, V value)
 {
-	using std::nullopt;
-	using KVPair = typename HashMap<K, V>::KVPair;
-	size_t key_hash = hash(key) % size(&self->_table);
-	size_t cell_try = key_hash;
-	bool tried = false;
-	while (key_hash != cell_try || !tried)
+	using Bucket = typename HashMapLP<K, V>::Bucket;
+	for (;;)
 	{
-		std::optional<KVPair> *cell = get(&self->_table, cell_try);
-		if (!*cell)
+		Bucket *bucket = _probe(self, key);
+		if (bucket)
 		{
+			*bucket = Bucket{false, key, value};
 			return false;
 		}
-		if ((**cell).key == key)
+		else
 		{
-			*cell = nullopt;
-			return true;
+			if (reserve(self, 1 + self->_table._size * 2))
+				return true;
 		}
-		cell_try = (cell_try + 1) % size(&self->_table);
-		tried = true;
 	}
-	return false;
+}
+
+template <typename K, typename V>
+V* get(HashMapLP<K, V> *self, K key)
+{
+	using Bucket = typename HashMapLP<K, V>::Bucket;
+	Bucket *bucket = _probe(self, key);
+	if (!bucket || bucket->empty)
+		return nullptr;
+	else
+		return &bucket->value;
+}
+
+template <typename K, typename V>
+bool remove(HashMapLP<K, V> *self, K key)
+{
+	using Bucket = typename HashMapLP<K, V>::Bucket;
+	Bucket *bucket = _probe(self, key);
+	if (!bucket || bucket->empty)
+		return false;
+	bucket->empty = true;
+	return true;
+}
+
+void print(HashMapLP<int, int> *self)
+{
+	printf("Linear Probing Hashmap \n");
+	printf("Current table size: %zu \n", self->_table._size);
+	for (auto &bucket : &self->_table)
+	{
+		printf("Bucket: empty, key, value: %d, %d, %d\n", (int) bucket.empty, bucket.key, bucket.value);
+	}
 }
